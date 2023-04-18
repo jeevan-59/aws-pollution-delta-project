@@ -29,11 +29,10 @@ Data flow : Landing --> bronze --> silver --> gold
 run cloudformation script - PlltnDeltaProjectTemplate.yaml
 
 ## Usage example
-run Step Functions - orchestration - land to bronze
-check delta files through Athena in bronze layer
+run Step Functions - orchestration - Land2Bronze and then check delta files through Athena in bronze layer
 
 ## Diagrams
-!(./Diagrams/awsdesign.png)
+![awsdesign](https://user-images.githubusercontent.com/14351765/232714710-3899d356-500e-4a90-86a8-7bfee5928b88.png)
 
 ## TO DO 
 * Orchestrating for bronze2Silver and Silver2Gold
