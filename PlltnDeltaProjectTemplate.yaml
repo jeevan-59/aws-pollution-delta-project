@@ -1,0 +1,513 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Pollution Delta Project Template
+
+Parameters:
+#################################################################################
+# Tags Parameters                                                               #
+#################################################################################
+  Project: 
+    Description: Short Project name
+    Type: String
+    Default: "plltndelta"
+
+  CreatedBy: 
+    Description: Developer
+    Type: String
+    Default: "TsvetomirIvanov"
+    
+#################################################################################    
+# Policy&role Parameters                                                        #
+#################################################################################
+  ManagedPolicyArn:
+    Description: Managed Policy, Usage - ARN,  Default - AWSLambdaBasicExecutionRole
+    Type: String
+    Default: "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+
+  ManagedPolicyArn2:
+    Description: Managed Policy, Usage - ARN,  Default - AmazonS3FullAccess
+    Type: String
+    Default: "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+
+  ManagedPolicyArn3:
+    Description: Managed Policy, Usage - ARN,  Default - AWSLambdaRole
+    Type: String
+    Default: "arn:aws:iam::aws:policy/service-role/AWSLambdaRole"
+
+  ManagedPolicyArn4:
+    Description: Managed Policy, Usage - ARN,  Default - AWSGlueServiceRole
+    Type: String
+    Default: "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+
+  ManagedPolicyArn5:
+    Description: Managed Policy, Usage - ARN,  Default - AWSGlueServiceNotebookRole
+    Type: String
+    Default: "arn:aws:iam::aws:policy/service-role/AWSGlueServiceNotebookRole"
+    
+  IAMRoleLambdaName: 
+    Description: lambda IAM Role 
+    Type: String
+    Default: "PlltnDeltaLambdaIAMRole" 
+    
+#################################################################################      
+# Config Parameters                                                             #
+#################################################################################
+  ECRLambdaWebScrappingName: 
+    Description: ECR Lambda WebScrapping Name
+    Type: String
+    Default: container-lambda-py-init-web-scraping
+
+  ECRLambdaAreaSofiaName: 
+    Description: ECR Lambda WebScrapping Name
+    Type: String
+    Default: container-lambda-py-area-sofia
+
+#################################################################################    
+# Bucket Parameters                                                             #
+#################################################################################
+  ConfigBucketName:
+    Description: S3 Config Bucket name (lowercase)
+    Type: String
+    Default:  "plltndelta-config-bucket" # REPLACE WITH YOUR CONFIG BUCKET IF EXISTS
+
+  ConfigBucketKey:
+    Description: S3 Config Bucket key (lowercase)
+    Type: String
+    Default:  "states-execution-detail.json"
+    
+  LandingBucketName:
+    Description: S3 Landing Bucket name (lowercase)
+    Type: String
+    Default: "plltndelta-landing-layer"
+
+  BronzeBucketName:
+    Description: S3 Bronze Bucket name (lowercase)
+    Type: String
+    Default: "plltndelta-bronze-layer"
+
+  SilverBucketName:
+    Description: S3 Silver Bucket name (lowercase)
+    Type: String
+    Default: "plltndelta-silver-layer"    
+
+  GoldBucketName:
+    Description: S3 Gold Bucket name (lowercase)
+    Type: String
+    Default: "plltndelta-gold-layer"
+    
+#################################################################################
+# Lambda Parameters                                                             #
+#################################################################################  
+  ScrapeAQILevelFuncName:
+    Description: Lambda func used for web scrape AQI level
+    Type: String
+    Default: "plltndelta-scrape-aqi-level"
+
+  APISofiaAreaFuncName:
+    Description: Lambda func used for web scrape AQI level
+    Type: String
+    Default: "plltndelta-load-area-sofia"
+
+#################################################################################
+# States Parameters                                                             #
+#################################################################################  
+  StepFuncName1:
+    Description: Step function used for orchistration - land to bronze
+    Type: String
+    Default: "plltndelta-orch-land2bronze"
+    
+#################################################################################
+# Resources                                                                     #
+#################################################################################
+Resources:
+
+#################################################################################
+############################ AWS ECR RESOURCES ##################################   
+   
+  ECRLambdaWebScrapping:
+     Type: AWS::ECR::Repository
+     Properties: 
+       ImageScanningConfiguration: 
+         ScanOnPush: true
+       RepositoryName: !Ref ECRLambdaWebScrappingName
+       Tags: 
+         - Key: "project"
+           Value: !Ref Project
+         - Key: "createdby"
+           Value: !Ref CreatedBy
+         - Key: "action"
+           Value: "Retrieving and storing data to s3 aqpm lookup - air_quality_and_pollution_measurement"
+
+  ECRLambdaAreaSofia:
+     Type: AWS::ECR::Repository
+     Properties: 
+       ImageScanningConfiguration: 
+         ScanOnPush: true
+       RepositoryName: !Ref ECRLambdaAreaSofiaName
+       Tags: 
+         - Key: "project"
+           Value: !Ref Project
+         - Key: "createdby"
+           Value: !Ref CreatedBy
+         - Key: "action"
+           Value: "Retrieving and storing data to s3 sofia area"
+           
+           
+#################################################################################
+############################ AWS LAMBDA RESOURCES ###############################
+
+  LambdaIAMRole:
+    Type: "AWS::IAM::Role"
+    DependsOn : ECRLambdaWebScrapping
+    Properties:
+      RoleName: !Ref IAMRoleLambdaName
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns: 
+        - !Ref ManagedPolicyArn
+        - !Ref ManagedPolicyArn2
+      Tags: 
+        - Key: "project"
+          Value: !Ref Project
+        - Key: "createdby"
+          Value: !Ref CreatedBy
+  
+  WebScraperFunc:
+    Type: "AWS::Lambda::Function"
+    DependsOn : LambdaIAMRole
+    Properties:
+      FunctionName: !Ref ScrapeAQILevelFuncName
+      #Handler: "app.handler"
+      #Runtime: "python3.8"
+      PackageType : Image 
+      MemorySize: 1024
+      Timeout: 3
+      Role: !GetAtt LambdaIAMRole.Arn
+      Code:
+        ImageUri : !Join
+                      - ':'
+                      - - !GetAtt ECRLambdaWebScrapping.RepositoryUri
+                        - latest   
+      Tags: 
+        - Key: "project"
+          Value: !Ref Project
+        - Key: "createdby"
+          Value: !Ref CreatedBy
+        - Key: "layer"
+          Value: "LandingLayer"      
+
+  WebAPISofiaAreaFunc:
+    Type: "AWS::Lambda::Function"
+    DependsOn : LambdaIAMRole
+    Properties:
+      FunctionName: !Ref APISofiaAreaFuncName
+      #Handler: "app.handler"
+      #Runtime: "python3.8"
+      PackageType : Image 
+      MemorySize: 256
+      Timeout: 30
+      Role: !GetAtt LambdaIAMRole.Arn
+      Code:
+        ImageUri : !Join
+                      - ':'
+                      - - !GetAtt ECRLambdaAreaSofia.RepositoryUri
+                        - latest   
+      Tags: 
+        - Key: "project"
+          Value: !Ref Project
+        - Key: "createdby"
+          Value: !Ref CreatedBy
+        - Key: "layer"
+          Value: "LandingLayer" 
+          
+#################################################################################
+############################ AWS S3 RESOURCES ###################################
+          
+  S3BucketConfig: 
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref ConfigBucketName
+      Tags: 
+        - Key: "project"
+          Value: !Ref Project
+        - Key: "createdby"
+          Value: !Ref CreatedBy
+        - Key: "layer"
+          Value: "ConfigLayer"
+
+  S3BucketLanding: 
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref LandingBucketName
+      Tags: 
+        - Key: "project"
+          Value: !Ref Project
+        - Key: "createdby"
+          Value: !Ref CreatedBy
+        - Key: "layer"
+          Value: "LandingLayer"
+
+  S3BucketBronze: 
+    Type: "AWS::S3::Bucket" 
+    Properties:
+      BucketName: !Ref BronzeBucketName
+      Tags:
+        - Key: "project"
+          Value: !Ref Project      
+        - Key: "createdby"
+          Value: !Ref CreatedBy
+        - Key: "layer"
+          Value: "BronzeLayer"
+
+  S3BucketSilver: 
+    Type: "AWS::S3::Bucket" 
+    Properties:
+      BucketName: !Ref SilverBucketName
+      Tags:
+        - Key: "project"
+          Value: !Ref Project      
+        - Key: "createdby"
+          Value: !Ref CreatedBy
+        - Key: "layer"
+          Value: "SilverLayer"
+
+  S3BucketGold: 
+    Type: "AWS::S3::Bucket" 
+    Properties:
+      BucketName: !Ref GoldBucketName
+      Tags:
+        - Key: "project"
+          Value: !Ref Project      
+        - Key: "createdby"
+          Value: !Ref CreatedBy
+        - Key: "layer"
+          Value: "GoldLayer"   
+
+
+          
+#################################################################################
+########################## AWS GLUE RESOURCES ###################################
+
+  GlueIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub AWSGlueServiceRole-${Project}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "glue.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns: 
+        - !Ref ManagedPolicyArn4
+        - !Ref ManagedPolicyArn5
+      Path: "/"
+      Policies:
+        - PolicyName: "inline_custom_s3"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                  - "s3:PutObject"
+                  - "s3:DeleteObject"
+                Resource: 
+                  - "arn:aws:s3:::plltndelta-landing-layer/*"
+                  - "arn:aws:s3:::plltndelta-bronze-layer/*"
+                  - "arn:aws:s3:::plltndelta-silver-layer/*"
+                  - "arn:aws:s3:::plltndelta-gold-layer/*"
+                  - "arn:aws:s3:::plltndelta-config-bucket/*"
+              - Effect: Allow
+                Action: 
+                  - "s3:List*"
+                  - "s3:Get*"
+                Resource: 
+                  - "arn:aws:s3:::plltndelta-landing-layer"
+                  - "arn:aws:s3:::plltndelta-bronze-layer"
+                  - "arn:aws:s3:::plltndelta-silver-layer"
+                  - "arn:aws:s3:::plltndelta-gold-layer"
+                  - "arn:aws:s3:::plltndelta-config-bucket"   
+        - PolicyName: "inline_custom_passRole"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "iam:GetRole"
+                  - "iam:PassRole"
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/service-role/AWSGlueServiceRole-${Project}"                    
+      Tags:
+        - Key: "project"
+          Value: !Ref Project      
+        - Key: "createdby"
+          Value: !Ref CreatedBy
+          
+  GlueLandDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId   
+      DatabaseInput:
+        Name: !Sub "${Project}-land-db"
+
+  GlueBronzeDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId   
+      DatabaseInput:
+        Name: !Sub "${Project}-bronze-db "
+        
+  GlueSilverDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId   
+      DatabaseInput:
+        Name: !Sub "${Project}-silver-db"
+
+  GlueGoldDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId   
+      DatabaseInput:
+        Name: !Sub "${Project}-gold-db"
+
+
+  GlueLandCrawler:
+    Type: AWS::Glue::Crawler
+    DependsOn : GlueLandDatabase
+    Properties: 
+      DatabaseName: !Ref GlueLandDatabase
+      Description: "Land Crawler"
+      Name: !Sub "${Project}-land-crawler"
+      RecrawlPolicy: 
+        RecrawlBehavior: CRAWL_EVERYTHING
+      Role: !GetAtt GlueIAMRole.Arn
+      SchemaChangePolicy: 
+        UpdateBehavior: "UPDATE_IN_DATABASE"
+        DeleteBehavior: "DELETE_FROM_DATABASE"
+      TablePrefix: "land_"
+      Tags: 
+        "project": !Ref Project
+        "createdby": !Ref CreatedBy
+      Targets: 
+         S3Targets:
+           - Path: !Sub "s3://${LandingBucketName}/sofia_area"
+
+  GlueSofiaAreaBronzeJob: 
+    Type: AWS::Glue::Job
+    DependsOn : GlueIAMRole
+    Properties:
+      Name: !Sub '${Project}-bronze-sofia_area-job'
+      Role: !GetAtt GlueIAMRole.Arn
+      GlueVersion: "3.0"
+      NumberOfWorkers: 2
+      WorkerType: "G.1X"
+      Timeout: 20
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub "s3://${ConfigBucketName}/glue-job-bronze-generic-waqi.py"
+      DefaultArguments:
+        "--enable-metrics": ""
+        "--extra-py-files": !Sub "s3://${ConfigBucketName}/delta-core_2.12-1.0.1.jar"
+        "--extra-jars": !Sub "s3://${ConfigBucketName}/delta-core_2.12-1.0.1.jar"
+        "--conf": "spark.delta.logStore.class=org.apache.spark.sql.delta.storage.S3SingleDriverLogStore --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.databricks.delta.schema.autoMerge.enabled=true"
+        "--src_database": !Ref GlueLandDatabase
+        "--src_bucket_name": !Ref LandingBucketName
+        "--tgt_bucket_name": !Ref BronzeBucketName
+        "--area": "sofia_area"
+      Tags:
+        "project": !Ref Project      
+        "createdby": !Ref CreatedBy
+
+
+
+#################################################################################
+########################## AWS STEP FUNCTION RESOURCES ##########################
+
+  StateIAMRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub AWSStateServiceRole-${Project}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - "states.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns: 
+        - !Ref ManagedPolicyArn3
+      Path: "/"
+      Policies:   
+        - PolicyName: "inline_glue_full_access"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "glue:*"
+                Resource: "*" 
+      Tags: 
+        - Key: "project"
+          Value: !Ref Project
+        - Key: "createdby"
+          Value: !Ref CreatedBy
+
+  MyStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Ref StepFuncName1
+      DefinitionS3Location:
+        Bucket: !Ref S3BucketConfig
+        Key: !Ref ConfigBucketKey
+      DefinitionSubstitutions: 
+        JobName: !Ref GlueSofiaAreaBronzeJob
+      RoleArn: !GetAtt StateIAMRole.Arn
+      Tags: 
+        - Key: "project"
+          Value: !Ref Project
+        - Key: "createdby"
+          Value: !Ref CreatedBy
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
