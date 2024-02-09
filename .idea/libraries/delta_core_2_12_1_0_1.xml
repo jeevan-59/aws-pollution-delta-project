@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="delta-core_2.12-1.0.1">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/delta-core_2.12-1.0.1.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

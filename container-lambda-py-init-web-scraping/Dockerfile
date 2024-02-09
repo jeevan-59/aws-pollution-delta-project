@@ -1,4 +1,6 @@
-FROM public.ecr.aws/lambda/python:3.8
+###FROM public.ecr.aws/lambda/python:3.8
+
+FROM public.ecr.aws/lambda/python:3.11-x86_64
 
 COPY app.py ${LAMBDA_TASK_ROOT}
 
